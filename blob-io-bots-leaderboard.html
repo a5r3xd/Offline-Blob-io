@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Blob Eating Food - Bots (Leaderboard Update)</title>
+<style>
+  html, body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+  canvas { display: block; background: #fff; }
+  #overlay {
+    position: absolute;
+    left: 0; top: 0; right: 0; bottom: 0;
+    display:flex; align-items:center; justify-content:center;
+    background: rgba(0,0,0,0.5);
+    z-index: 10;
+  }
+  #menu {
+    background: white; padding: 20px; border-radius: 8px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4); text-align:center;
+  }
+  #menu input { font-size:16px; padding:8px; width:220px; margin-right:8px; }
+  #menu button { font-size:16px; padding:8px 12px; }
+</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+
+<div id="overlay">
+  <div id="menu">
+    <h2>Choose your nickname</h2>
+    <input id="nickInput" placeholder="Enter nickname (max 12 chars)" maxlength="12" />
+    <button id="startBtn">Start Game</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let width = window.innerWidth;
+let height = window.innerHeight;
+canvas.width = width;
+canvas.height = height;
+
+// Map settings
+const mapWidth = 5000;
+const mapHeight = 5000;
+const gridSize = 20;
+
+// Blob settings
+const startingRadius = 10;
+const blob = {
+  x: mapWidth/2,
+  y: mapHeight/2,
+  radius: startingRadius,
+  vx: 0,
+  vy: 0,
+  accel: 0.5,
+  friction: 0.9,
+  color: getRandomColor(),
+  score: 0,
+  name: 'Player'
+};
+
+function updateBlobSizeFromScore(b) {
+  b.radius = startingRadius + Math.sqrt(b.score) * 0.8; // bigger growth
+  b.radius = Math.max(startingRadius, b.radius);
+}
+
+const mouse = {x: width/2, y: height/2};
+
+// Food settings
+const maxFood = 500;
+const food = [];
+
+for(let i=0;i<maxFood;i++){
+  food.push({
+    x: Math.random()*mapWidth,
+    y: Math.random()*mapHeight,
+    radius: 5,
+    color: getRandomColor()
+  });
+}
+
+// Minimap settings
+const minimapScale = 0.05;
+const minimapWidth = mapWidth * minimapScale;
+const minimapHeight = mapHeight * minimapScale;
+const minimapPadding = 20;
+
+function getRandomColor() {
+  const r = Math.floor(Math.random()*256);
+  const g = Math.floor(Math.random()*256);
+  const b = Math.floor(Math.random()*256);
+  return `rgb(${r},${g},${b})`;
+}
+
+// Mouse tracking
+canvas.addEventListener('mousemove', e => {
+  mouse.x = e.clientX;
+  mouse.y = e.clientY;
+});
+
+function moveBlob() {
+  const dx = mouse.x - width/2;
+  const dy = mouse.y - height/2;
+  const distance = Math.sqrt(dx*dx + dy*dy);
+
+  const sizeFactor = Math.min(blob.radius / startingRadius, 5);
+  const maxSpeed = blob.accel / sizeFactor;
+
+  if(distance > 5){
+    const angle = Math.atan2(dy, dx);
+    const accel = Math.min(maxSpeed, maxSpeed * (distance / 50));
+    blob.vx += Math.cos(angle) * accel;
+    blob.vy += Math.sin(angle) * accel;
+  }
+
+  blob.vx *= blob.friction;
+  blob.vy *= blob.friction;
+
+  blob.x += blob.vx;
+  blob.y += blob.vy;
+
+  blob.x = Math.max(blob.radius, Math.min(mapWidth - blob.radius, blob.x));
+  blob.y = Math.max(blob.radius, Math.min(mapHeight - blob.radius, blob.y));
+
+  eatFood(blob);
+}
+
+// --- BOTS ---
+const numBots = 49;
+const bots = [];
+
+const nameAdjs = ["Red","Blue","Fast","Sneaky","Mighty","Tiny","Giant","Happy","Grim","Swift","Lucky","Silent","Fuzzy","Spiky","Royal","Clever"];
+const nameNouns = ["Fox","Lion","Blob","Eel","Wolf","Tiger","Shark","Comet","Nova","Drift","Phantom","Raven","Hawk","Panda","Goblin","Sprite"];
+
+function genName() {
+  const a = nameAdjs[Math.floor(Math.random()*nameAdjs.length)];
+  const n = nameNouns[Math.floor(Math.random()*nameNouns.length)];
+  const num = Math.floor(Math.random()*900)+100;
+  return a + n + num;
+}
+
+for (let i = 0; i < numBots; i++) {
+  bots.push({
+    x: Math.random() * mapWidth,
+    y: Math.random() * mapHeight,
+    radius: startingRadius,
+    vx: 0,
+    vy: 0,
+    accel: 0.5,
+    friction: 0.9,
+    color: getRandomColor(),
+    score: 0,
+    name: genName()
+  });
+}
+
+function eatFood(b) {
+  for (let i = 0; i < food.length; i++) {
+    const f = food[i];
+    const dx = b.x - f.x;
+    const dy = b.y - f.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < b.radius + f.radius) {
+      b.score += 10;
+      updateBlobSizeFromScore(b);
+      food[i] = {
+        x: Math.random()*mapWidth,
+        y: Math.random()*mapHeight,
+        radius: 5,
+        color: getRandomColor()
+      };
+    }
+  }
+}
+
+// --- BOT AI ---
+function moveBots() {
+  for (let bot of bots) {
+    let nearest = null;
+    let nearestDist = Infinity;
+
+    const allBlobs = [blob, ...bots.filter(b => b !== bot)];
+
+    for (const other of allBlobs) {
+      const dx = other.x - bot.x;
+      const dy = other.y - bot.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < nearestDist) {
+        nearest = other;
+        nearestDist = dist;
+      }
+    }
+
+    let targetX = bot.x;
+    let targetY = bot.y;
+
+    if (nearest) {
+      if (nearest.radius <= bot.radius / 1.1) { // smaller enough
+        targetX = nearest.x;
+        targetY = nearest.y;
+      } else if (nearest.radius >= bot.radius * 1.1) { // bigger enough
+        targetX = bot.x - (nearest.x - bot.x);
+        targetY = bot.y - (nearest.y - bot.y);
+      } else {
+        // No blob in valid 1.1x range, eat food
+        let nearestFood = null;
+        let nearestFoodDist = Infinity;
+        for (const f of food) {
+          const dx = f.x - bot.x;
+          const dy = f.y - bot.y;
+          const dist = Math.sqrt(dx*dx + dy*dy);
+          if (dist < nearestFoodDist) {
+            nearestFood = f;
+            nearestFoodDist = dist;
+          }
+        }
+        if (nearestFood) {
+          targetX = nearestFood.x;
+          targetY = nearestFood.y;
+        }
+      }
+    }
+
+    const dx = targetX - bot.x;
+    const dy = targetY - bot.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    const sizeFactor = Math.min(bot.radius / startingRadius, 5);
+    const maxSpeed = bot.accel / sizeFactor;
+
+    if (dist > 5) {
+      const angle = Math.atan2(dy, dx);
+      const accel = Math.min(maxSpeed, maxSpeed * (dist / 50));
+      bot.vx += Math.cos(angle) * accel;
+      bot.vy += Math.sin(angle) * accel;
+    }
+
+    bot.vx *= bot.friction;
+    bot.vy *= bot.friction;
+
+    bot.x += bot.vx;
+    bot.y += bot.vy;
+
+    bot.x = Math.max(bot.radius, Math.min(mapWidth - bot.radius, bot.x));
+    bot.y = Math.max(bot.radius, Math.min(mapHeight - bot.radius, bot.y));
+
+    eatFood(bot);
+  }
+}
+
+// --- BLOB vs BLOB EATING LOGIC ---
+function handleBlobCollisions() {
+  for (const b of bots) {
+    checkAndResolveEat(b, blob);
+  }
+  for (let i = 0; i < bots.length; i++) {
+    for (let j = i+1; j < bots.length; j++) {
+      checkAndResolveEat(bots[i], bots[j]);
+    }
+  }
+}
+
+function checkAndResolveEat(a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const dist = Math.sqrt(dx*dx + dy*dy);
+  if (dist < a.radius + b.radius) { // touching
+    if (a.radius >= b.radius * 1.1) {
+      resolveEat(a, b);
+    } else if (b.radius >= a.radius * 1.1) {
+      resolveEat(b, a);
+    }
+  }
+}
+
+function resolveEat(winner, victim) {
+  const pre = Math.floor(victim.score);
+  const transfer = Math.floor(pre/2);
+
+  winner.score += transfer;
+  updateBlobSizeFromScore(winner);
+
+  victim.score = Math.floor(pre/2);
+  updateBlobSizeFromScore(victim);
+
+  victim.x = Math.random() * (mapWidth - 200) + 100;
+  victim.y = Math.random() * (mapHeight - 200) + 100;
+  victim.vx = (Math.random()-0.5) * 4;
+  victim.vy = (Math.random()-0.5) * 4;
+}
+
+// --- DRAWING ---
+function drawGrid(offsetX, offsetY, scale) {
+  ctx.strokeStyle = '#e0e0e0';
+  ctx.lineWidth = 2;
+  for(let x=0; x<=mapWidth; x+=gridSize){
+    ctx.beginPath();
+    ctx.moveTo((x - offsetX)*scale, -offsetY*scale);
+    ctx.lineTo((x - offsetX)*scale, (mapHeight - offsetY)*scale);
+    ctx.stroke();
+  }
+  for(let y=0; y<=mapHeight; y+=gridSize){
+    ctx.beginPath();
+    ctx.moveTo(-offsetX*scale, (y - offsetY)*scale);
+    ctx.lineTo((mapWidth - offsetX)*scale, (y - offsetY)*scale);
+    ctx.stroke();
+  }
+}
+
+function drawBlob(offsetX, offsetY, scale, b) {
+  ctx.beginPath();
+  ctx.arc((b.x - offsetX)*scale, (b.y - offsetY)*scale, b.radius*scale, 0, Math.PI*2);
+  ctx.fillStyle = b.color;
+  ctx.fill();
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 2*scale;
+  ctx.stroke();
+
+  ctx.fillStyle = 'black';
+  const fontSize = Math.max(10, Math.floor(b.radius * scale * 0.8));
+  ctx.font = `${fontSize}px Arial`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(b.name, (b.x - offsetX)*scale, (b.y - offsetY)*scale);
+}
+
+function drawBots(offsetX, offsetY, scale) {
+  for (const b of bots) {
+    drawBlob(offsetX, offsetY, scale, b);
+  }
+}
+
+function drawFood(offsetX, offsetY, scale) {
+  for(const f of food){
+    ctx.beginPath();
+    ctx.arc((f.x - offsetX)*scale, (f.y - offsetY)*scale, f.radius*scale, 0, Math.PI*2);
+    ctx.fillStyle = f.color;
+    ctx.fill();
+  }
+}
+
+function drawMinimap() {
+  const x = width - minimapWidth - minimapPadding;
+  const y = height - minimapHeight - minimapPadding;
+
+  ctx.fillStyle = 'black';
+  ctx.fillRect(x, y, minimapWidth, minimapHeight);
+
+  ctx.fillStyle = blob.color;
+  ctx.beginPath();
+  ctx.arc(x + blob.x*minimapScale, y + blob.y*minimapScale, 5, 0, Math.PI*2);
+  ctx.fill();
+
+  let top = null;
+  for (const b of bots) {
+    if (!top || b.score > top.score) top = b;
+  }
+  if (top && blob.score > top.score) top = blob;
+
+  if (top && top !== blob) {
+    ctx.fillStyle = top.color;
+    ctx.beginPath();
+    ctx.arc(x + top.x*minimapScale, y + top.y*minimapScale, 5, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+function drawScore() {
+  ctx.fillStyle = "black";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + blob.score, 20, 30);
+}
+
+// --- LEADERBOARD ---
+function drawLeaderboard() {
+  const all = [blob, ...bots];
+  all.sort((a,b)=>b.score - a.score);
+  const top10 = all.slice(0,10);
+
+  ctx.fillStyle = "black";
+  ctx.font = "16px Arial";
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+
+  for (let i=0; i<top10.length; i++) {
+    const b = top10[i];
+    ctx.fillText(`${i+1}. ${b.name}: ${b.score}`, width - 20, 20 + i*18);
+  }
+}
+
+// --- MAIN LOOP ---
+let started = false;
+function loop() {
+  if (!started) return;
+  ctx.clearRect(0,0,width,height);
+
+  moveBlob();
+  moveBots();
+  handleBlobCollisions();
+
+  const fovScale = Math.max(1 - (blob.radius / startingRadius)*0.03, 0.3);
+  const offsetX = blob.x - width/(2*fovScale);
+  const offsetY = blob.y - height/(2*fovScale);
+
+  drawGrid(offsetX, offsetY, fovScale);
+  drawFood(offsetX, offsetY, fovScale);
+  drawBlob(offsetX, offsetY, fovScale, blob);
+  drawBots(offsetX, offsetY, fovScale);
+  drawMinimap();
+  drawScore();
+  drawLeaderboard();
+
+  requestAnimationFrame(loop);
+}
+
+loop();
+
+window.addEventListener('resize', () => {
+  width = window.innerWidth;
+  height = window.innerHeight;
+  canvas.width = width;
+  canvas.height = height;
+});
+
+// --- Start menu ---
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const nickInput = document.getElementById('nickInput');
+
+startBtn.addEventListener('click', () => {
+  const nick = nickInput.value.trim() || 'Player';
+  blob.name = nick.substring(0,12);
+  overlay.style.display = 'none';
+  started = true;
+  loop();
+});
+
+nickInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') startBtn.click();
+});
+
+window.player = blob;
+</script>
+</body>
+</html>
